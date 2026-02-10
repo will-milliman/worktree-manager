@@ -1,0 +1,11 @@
+{
+  "integrate": {
+    "repo": "C:/Projects/rainier",
+    "branch": "main",
+    "workspace": "/monorepo/desktop/ui/.vscode/integrate.code-workspace",
+    "setup": {
+      "cwd": "/monorepo/desktop/ui",
+      "command": "yarn install; yarn build"
+    }
+  }
+}
