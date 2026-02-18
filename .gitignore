@@ -1,2 +1,5 @@
 .vscode/settings.json
+.vscode/tasks.json
 .worktrees/
+status.json
+sessions.json

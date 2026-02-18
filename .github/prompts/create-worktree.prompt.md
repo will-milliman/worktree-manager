@@ -126,7 +126,21 @@ Parse the user's input:
       Start-Process "code" -ArgumentList $workspacePath
       ```
 
-5.  **Setup Worktree for Development** _(skip if profile has no `setup` config)_
+5.  **Open Azure DevOps Work Item in Browser**
+
+    Since the work item was already fetched in step 1, extract the work item URL from the response (the `_links.html.href` field) and open it in the default browser:
+
+    ```powershell
+    Start-Process "<work-item-url>"
+    ```
+
+    If the URL was not available in the response, construct a fallback URL and open it anyway:
+
+    ```powershell
+    Start-Process "https://dev.azure.com/AHS-Rainier/Rainier/_workitems/edit/<task-number>"
+    ```
+
+6.  **Setup Worktree for Development** _(skip if profile has no `setup` config)_
 
     If the resolved profile contains a `setup` object, run the setup command to prepare the worktree for development.
     - **Working directory**: `<worktree-path>` + `setup.cwd` (if specified). If `setup.cwd` is omitted, use the worktree root.
@@ -146,6 +160,24 @@ Parse the user's input:
     <setup-command>
     ```
 
+7.  **Update Worktree Status File**
+
+    Update `C:/Projects/worktree-manager/status.json` to record that this worktree is now in use with the new branch.
+
+    The file is a JSON object where keys are worktree directory names (e.g., `rainier-1`) and values are the branch name (`"main"` when parked, the full branch name when in use). Ignore any entries not matching `<repo-name>-*` (e.g., `IDM`).
+
+    > **IMPORTANT**: `status.json` is gitignored. Always update it via a **terminal command** (not a file-edit tool) so the change applies immediately without requiring user review.
+
+    Read the current file, update the entry for the claimed/created worktree directory, and write it back:
+
+    ```powershell
+    $statusFile = "C:/Projects/worktree-manager/status.json"
+    $status = Get-Content $statusFile -Raw | ConvertFrom-Json
+    $worktreeName = Split-Path "<worktree-path>" -Leaf   # e.g., "rainier-1"
+    $status.$worktreeName = "<branch-name>"
+    $status | ConvertTo-Json | Set-Content $statusFile
+    ```
+
 ## Example Usage
 
 ```
@@ -159,7 +191,9 @@ Both forms will:
 2. Create branch like `task/88888/implement-feature`
 3. Claim a parked worktree (fast) or create a new one at `.worktrees/rainier-N` (slow)
 4. Open the configured workspace on a new virtual desktop (`88888-implement-feature`)
-5. Run the profile's setup command (e.g. `yarn install`) if configured — incremental when reusing
+5. Open the Azure DevOps work item in the browser
+6. Run the profile's setup command (e.g. `yarn install`) if configured — incremental when reusing
+7. Update `status.json` to record the worktree is in use with the new branch name
 
 ## Error Handling
 

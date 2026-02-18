@@ -69,6 +69,24 @@ To determine `<repo-path>`, read `config/profiles.json` and extract the repo pat
 
    Verify that the worktree entry now shows `detached` instead of a `branch` line.
 
+3. **Update Worktree Status File**
+
+   Update `C:/Projects/worktree-manager/status.json` to record that this worktree is now parked.
+
+   The file is a JSON object where keys are worktree directory names (e.g., `rainier-1`) and values are the branch name (`"main"` when parked, the full branch name when in use). Ignore any entries not matching `<repo-name>-*` (e.g., `IDM`).
+
+   > **IMPORTANT**: `status.json` is gitignored. Always update it via a **terminal command** (not a file-edit tool) so the change applies immediately without requiring user review.
+
+   Read the current file, set the entry for the parked worktree to `"main"`, and write it back:
+
+   ```powershell
+   $statusFile = "C:/Projects/worktree-manager/status.json"
+   $status = Get-Content $statusFile -Raw | ConvertFrom-Json
+   $worktreeName = Split-Path "<worktree-path>" -Leaf   # e.g., "rainier-1"
+   $status.$worktreeName = "main"
+   $status | ConvertTo-Json | Set-Content $statusFile
+   ```
+
 ## Example Usage
 
 ```
@@ -83,7 +101,8 @@ Either form will:
 
 1. Close all windows on the virtual desktop and remove it
 2. Reset the worktree to the base branch, detach HEAD, clean untracked files, and delete the task branch
-3. Leave the worktree directory intact with `node_modules` preserved for fast reuse
+3. Update `status.json` to record the worktree is parked (set to `"main"`)
+4. Leave the worktree directory intact with `node_modules` preserved for fast reuse
 
 ## Safety Notes
 
