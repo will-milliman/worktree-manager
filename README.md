@@ -9,7 +9,7 @@ Two Copilot slash commands handle the full lifecycle:
 | Command | What it does |
 |---|---|
 | `/create-worktree <id> [profile]` | Fetches the ADO work item, creates a branch, provisions a worktree, opens a VS Code workspace on a new virtual desktop, and runs setup |
-| `/clean-worktree [id]` | Closes all windows on the task's virtual desktop, resets the worktree to a detached HEAD, and deletes the local branch — but **keeps the directory and `node_modules`** so the next task starts fast |
+| `/clean-worktree [name]` | Closes all windows on the worktree's virtual desktop, resets the worktree to a detached HEAD, and deletes the local branch — but **keeps the directory and `node_modules`** so the next task starts fast |
 
 ### Worktree Reuse (Parking)
 

@@ -1,45 +1,48 @@
 ---
-argument-hint: "<task-number> — or leave blank to list active worktrees"
+argument-hint: "<worktree-name>"
 ---
 
 # Clean Worktree (Park for Reuse)
 
-Park a worktree so it can be reused by a future `/create-worktree` invocation. This closes the virtual desktop, resets the worktree to its base branch in a detached HEAD state, and deletes the old task branch — but **preserves the worktree directory and `node_modules`** so the next task gets a fast start.
+Park a worktree so it can be reused by a future `/create-worktree` invocation. This closes the virtual desktop and resets the worktree to its base branch in a detached HEAD state — but **preserves the worktree directory and `node_modules`** so the next task gets a fast start.
 
 ## Input
 
-The user provides an optional **task number** as free-text after the slash command.
+The user provides an optional **worktree name** (e.g., `rainier-2`) as free-text after the slash command.
 
-- `/clean-worktree 88018` — park the worktree for task 88018
+- `/clean-worktree rainier-2` — park the worktree named `rainier-2`
 - `/clean-worktree` — list active worktrees and ask the user to pick one
 
-### Auto-discovery (no task number provided)
+### Auto-discovery (no worktree name provided)
 
-If the user does not supply a task number, discover active (in-use) worktrees by checking which ones have a branch checked out:
+If the user does not supply a worktree name, discover active (in-use) worktrees from `status.json`:
 
-```powershell
-cd <repo-path>
-git worktree list --porcelain
-```
-
-Parse the output and find worktrees under `C:/Projects/worktree-manager/.worktrees/` that have a `branch` line (not `detached`). Present them as a numbered list showing the worktree directory name and branch, and ask the user which one to clean up. If there are no active worktrees, inform the user and stop.
-
-To determine `<repo-path>`, read `config/profiles.json` and extract the repo path. If there is only one profile, use it automatically. If multiple, list them and ask the user to choose.
+1. Read `C:/Projects/worktree-manager/status.json`.
+2. Filter entries where the value is **not** `"main"` (i.e., the worktree has an active branch).
+3. If no active worktrees exist, inform the user and stop.
+4. Use `ask_questions` to present a single-select picker:
+   - **Question**: _"Which worktree do you want to clean?"_
+   - **Options**: One per active worktree. Each option:
+     - `label`: the worktree name (e.g., `rainier-1`)
+     - `description`: the branch name (e.g., `task/88983/pnpm-install`)
+5. Use the selected worktree name to proceed to step 1.
 
 ## Instructions
 
-1. **Close All Windows on Virtual Desktop and Remove It**
+1. **Resolve Worktree Path and Task Number**
+
+   Read `config/profiles.json` to determine the repo root path and base branch for the profile (e.g., `master`). The worktree directory path is `<repo-root>/<worktree-name>` (e.g., `C:/Users/william.cox/Documents/repositories/rainier-2`).
+
+   Look up the branch name from `status.json` for the given worktree name. Extract the task number from the branch (e.g., `task/88018/remove-prettier` → `88018`).
+
+2. **Close All Windows on Virtual Desktop and Remove It**
 
    ```powershell
    Import-Module C:/Projects/worktree-manager/scripts/VirtualDesktopManager.psm1
    Close-AllWindowsOnDesktop -TaskNumber <task-number>
    ```
 
-2. **Park the Worktree**
-
-   First, identify which worktree directory contains the task's branch. Parse `git worktree list --porcelain` to find the entry whose `branch` line contains the task number (e.g., `branch refs/heads/task/88018/remove-prettier`). Extract the worktree path from that entry.
-
-   Read `config/profiles.json` to determine the base branch for the profile (e.g., `master`).
+3. **Park the Worktree**
 
    **IMPORTANT — Single execution**: All sub-steps below MUST be run in a **single terminal command**. Do NOT split these into separate `run_in_terminal` calls.
 
@@ -58,9 +61,6 @@ To determine `<repo-path>`, read `config/profiles.json` and extract the repo pat
    # Remove untracked files but preserve .gitignore'd files (node_modules, .yarn, build caches)
    git clean -fd
 
-   # Delete the old task branch (local only, never remote)
-   git branch -D <old-branch-name>
-
    # Verify the worktree is now parked
    Write-Host "=== VERIFY ==="
    git worktree list --porcelain
@@ -69,7 +69,7 @@ To determine `<repo-path>`, read `config/profiles.json` and extract the repo pat
 
    Verify that the worktree entry now shows `detached` instead of a `branch` line.
 
-3. **Update Worktree Status File**
+4. **Update Worktree Status File**
 
    Update `C:/Projects/worktree-manager/status.json` to record that this worktree is now parked.
 
@@ -90,23 +90,22 @@ To determine `<repo-path>`, read `config/profiles.json` and extract the repo pat
 ## Example Usage
 
 ```
-/clean-worktree 88018
+/clean-worktree rainier-2
 /clean-worktree
 ```
 
-- With a task number: proceeds directly with parking.
-- Without a task number: lists active worktrees and asks which to park.
+- With a worktree name: proceeds directly with parking.
+- Without a worktree name: lists active worktrees and asks which to park.
 
 Either form will:
 
 1. Close all windows on the virtual desktop and remove it
-2. Reset the worktree to the base branch, detach HEAD, clean untracked files, and delete the task branch
+2. Reset the worktree to the base branch, detach HEAD, and clean untracked files
 3. Update `status.json` to record the worktree is parked (set to `"main"`)
 4. Leave the worktree directory intact with `node_modules` preserved for fast reuse
 
 ## Safety Notes
 
-- Only local branches are deleted (never affects remote branches)
 - If worktree has uncommitted changes, they will be lost — `git reset --hard` discards everything
 - Consider pushing important work before parking
 - `git clean -fd` removes untracked files but preserves `.gitignore`'d files like `node_modules`
@@ -117,4 +116,3 @@ Either form will:
 - If some windows don't close within the timeout, desktop removal proceeds anyway (remaining windows move to adjacent desktop)
 - If virtual desktop removal fails, continue with worktree parking
 - If `git reset` or `git checkout --detach` fails, report the error to the user
-- If the branch cannot be deleted (e.g., it doesn't exist), continue — this is non-fatal

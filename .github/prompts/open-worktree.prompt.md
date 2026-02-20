@@ -1,5 +1,5 @@
 ---
-argument-hint: "<task-number> — or leave blank to list closed worktrees"
+argument-hint: "<task-number>"
 ---
 
 # Open Worktree (Resume a Suspended Worktree)
@@ -15,18 +15,16 @@ The user provides an optional **task number** as free-text after the slash comma
 
 ### Auto-discovery (no task number provided)
 
-If the user does not supply a task number, read `sessions.json` and list all entries:
+If the user does not supply a task number, discover closed worktrees from `sessions.json`:
 
-```powershell
-$sessionsFile = "C:/Projects/worktree-manager/sessions.json"
-$sessions = Get-Content $sessionsFile -Raw | ConvertFrom-Json
-$sessions.PSObject.Properties | ForEach-Object {
-    $s = $_.Value
-    Write-Host "$($_.Name) — $($s.branch) (desktop: $($s.desktopName))"
-}
-```
-
-Present the results as a numbered list and ask the user which one to reopen. If `sessions.json` is empty (no properties), inform the user that there are no closed worktrees and stop.
+1. Read `C:/Projects/worktree-manager/sessions.json`.
+2. If there are no entries (empty object), inform the user that there are no closed worktrees and stop.
+3. Use `ask_questions` to present a single-select picker:
+   - **Question**: _"Which worktree do you want to reopen?"_
+   - **Options**: One per session entry. Each option:
+     - `label`: the task number (the key in `sessions.json`, e.g., `88018`)
+     - `description`: `<branch> (desktop: <desktopName>)` (e.g., `task/88018/remove-prettier (desktop: 88018-remove-prettier)`)
+4. Use the selected task number to proceed to step 1.
 
 ## Instructions
 
@@ -82,7 +80,7 @@ Present the results as a numbered list and ask the user which one to reopen. If 
    If the work item cannot be fetched, construct a fallback URL and open it anyway:
 
    ```powershell
-   Start-Process "https://dev.azure.com/AHS-Rainier/Rainier/_workitems/edit/<task-number>"
+   Start-Process "https://dev.azure.com/mgalfadev/5d438345-7020-4631-a370-020f9319088b/_workitems/edit/<task-number>"
    ```
 
 4. **Open GitHub Pull Request in Browser (if one exists)**
@@ -125,7 +123,7 @@ Either form will:
 
 1. Load the saved session metadata from `sessions.json`
 2. Create (or reuse) the virtual desktop with the original name and switch to it
-3. Open the VS Code workspace
+3. Open the VS Code workspace (work item context is auto-loaded from `.github/copilot-instructions.md` in the worktree)
 4. Open the Azure DevOps work item in the browser
 5. Open the GitHub pull request in the browser (if one exists)
 6. Remove the session entry from `sessions.json`

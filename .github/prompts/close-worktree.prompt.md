@@ -1,5 +1,5 @@
 ---
-argument-hint: "<task-number> — or leave blank to list active worktrees"
+argument-hint: "<task-number>"
 ---
 
 # Close Worktree (Suspend for Later)
@@ -15,18 +15,19 @@ The user provides an optional **task number** as free-text after the slash comma
 
 ### Auto-discovery (no task number provided)
 
-If the user does not supply a task number, discover active (in-use) worktrees:
+If the user does not supply a task number, discover eligible worktrees from `status.json`:
 
-```powershell
-cd <repo-path>
-git worktree list --porcelain
-```
-
-Parse the output and find worktrees under `C:/Projects/worktree-manager/.worktrees/` that have a `branch` line (not `detached`). Then check which of those already have an entry in `C:/Projects/worktree-manager/sessions.json` (meaning they are already closed). **Exclude** any worktrees that already have a session entry.
-
-Present the remaining active worktrees as a numbered list showing the worktree directory name and branch, and ask the user which one to close. If there are no eligible worktrees, inform the user and stop.
-
-To determine `<repo-path>`, read `config/profiles.json` and extract the repo path. If there is only one profile, use it automatically. If multiple, list them and ask the user to choose.
+1. Read `C:/Projects/worktree-manager/status.json`.
+2. Filter entries where the value is **not** `"main"` (i.e., the worktree has an active branch).
+3. Read `C:/Projects/worktree-manager/sessions.json` and **exclude** any entries whose task number already appears as a key in `sessions.json` (these are already suspended).
+4. If no eligible worktrees remain, inform the user and stop.
+5. For each eligible entry, extract the task number from the branch name (e.g., `task/88983/pnpm-install` → `88983`).
+6. Use `ask_questions` to present a single-select picker:
+   - **Question**: _"Which worktree do you want to close?"_
+   - **Options**: One per eligible worktree. Each option:
+     - `label`: the task number (e.g., `88983`)
+     - `description`: `<worktree-dir> → <branch>` (e.g., `rainier-1 → task/88983/pnpm-install`)
+7. Use the selected task number to proceed to step 1.
 
 ## Instructions
 
@@ -42,17 +43,17 @@ To determine `<repo-path>`, read `config/profiles.json` and extract the repo pat
 
 2. **Save Session Metadata**
 
-   Add the session entry to `sessions.json`, keyed by task number:
+   Add the session entry to `sessions.json`, keyed by task number.
 
    ```powershell
    $sessionsFile = "C:/Projects/worktree-manager/sessions.json"
    $sessions = Get-Content $sessionsFile -Raw | ConvertFrom-Json
 
    $session = @{
-       desktopName  = "<desktop-name>"
-       worktreePath = "<worktree-path>"
-       branch       = "<branch-name>"
-       profile      = "<profile-name>"
+       desktopName      = "<desktop-name>"
+       worktreePath     = "<worktree-path>"
+       branch           = "<branch-name>"
+       profile          = "<profile-name>"
    }
 
    $sessions | Add-Member -NotePropertyName "<task-number>" -NotePropertyValue $session -Force

@@ -1,5 +1,5 @@
 ---
-argument-hint: "<work-item-id> [profile] — e.g. 88018 or 88018 integrate"
+argument-hint: "<work-item-id> — e.g. 88018"
 ---
 
 # Create Worktree from Azure DevOps Work Item
@@ -8,25 +8,31 @@ You are helping to create a git worktree based on an Azure DevOps work item.
 
 ## Input
 
-The user provides a **work item ID** and an optional **profile name** as free-text after the slash command.
+The user provides a **work item ID** as free-text after the slash command.
 
-Parse the user's input:
-
-- The numeric value is the **work item ID** (required).
-- Any non-numeric word is the **profile name** (optional).
-- Examples: `/create-worktree 88018`, `/create-worktree 88018 integrate`
+- Parse the numeric value as the **work item ID** (required).
+- Example: `/create-worktree 88018`
 
 ## Instructions
+
+0.  **Interactive Configuration**
+
+    Before doing any work, gather configuration choices interactively.
+
+    First, read `config/profiles.json` to discover available profiles.
+
+    Then, resolve the profile:
+    - **Profile** _(only if multiple profiles exist)_: Use `ask_questions` to present a single-select picker from the profile names found in the config file.
+      - If only **one profile** exists, skip this question — auto-select it and tell the user which profile was chosen.
+
+    Store the resolved **profile** for use in subsequent steps.
+
+## Steps
 
 1.  **Load Configuration & Fetch Work Item**
 
     Run **all** of the following **in parallel** (they have no dependencies on each other):
-    - **Resolve profile**: Read `config/profiles.json`.
-      - If the user specified a profile name, look it up.
-      - If no profile was specified:
-        - **One profile** → use it automatically (tell the user which was selected).
-        - **Multiple profiles** → list them and ask the user to choose before proceeding.
-      - Extract the matching profile's repo path, base branch, workspace path, and `setup` config (if present).
+    - **Resolve profile**: Using the profile selected in step 0 (either auto-selected or chosen by the user), extract the matching profile's repo path, base branch, workspace path, and `setup` config (if present).
       - Derive `<repo-name>` from the profile's repo path (last path segment, e.g., `C:/Projects/rainier` → `rainier`).
     - **Fetch work item**: Use `mcp_ado_wit_get_work_item` to fetch the work item.
       - Parameters:
@@ -137,10 +143,42 @@ Parse the user's input:
     If the URL was not available in the response, construct a fallback URL and open it anyway:
 
     ```powershell
-    Start-Process "https://dev.azure.com/AHS-Rainier/Rainier/_workitems/edit/<task-number>"
+    Start-Process "https://dev.azure.com/mgalfadev/5d438345-7020-4631-a370-020f9319088b/_workitems/edit/<task-number>"
     ```
 
-6.  **Setup Worktree for Development** _(skip if profile has no `setup` config)_
+6.  **Generate Work Item Context File**
+
+    Write a `.github/copilot-instructions.md` file into the worktree so that VS Code Chat automatically loads the work item context into every conversation.
+
+    > **IMPORTANT**: Use a **terminal command** (not a file-edit tool) to write this file, so it's created immediately without requiring user review.
+
+    ```powershell
+    $contextDir = "<worktree-path>/.github"
+    if (-not (Test-Path $contextDir)) {
+        New-Item -ItemType Directory -Path $contextDir -Force | Out-Null
+    }
+
+    $contextContent = @"
+    # Active Work Item
+
+    - **Type**: <work-item-type>
+    - **ID**: <task-number>
+    - **Title**: <title>
+    - **URL**: <work-item-url>
+    - **Branch**: <branch-name>
+
+    ## Description
+
+    <full-description-from-ado>
+    "@
+
+    Set-Content -Path "$contextDir/copilot-instructions.md" -Value $contextContent -Encoding UTF8
+    Write-Host "Created .github/copilot-instructions.md with work item context"
+    ```
+
+    This file is untracked by git and will be automatically included in every VS Code Chat interaction within the worktree workspace. It is cleaned up automatically when the worktree is parked via `/clean-worktree` (since `git clean -fd` removes untracked files).
+
+7.  **Setup Worktree for Development** _(skip if profile has no `setup` config)_
 
     If the resolved profile contains a `setup` object, run the setup command to prepare the worktree for development.
     - **Working directory**: `<worktree-path>` + `setup.cwd` (if specified). If `setup.cwd` is omitted, use the worktree root.
@@ -160,7 +198,7 @@ Parse the user's input:
     <setup-command>
     ```
 
-7.  **Update Worktree Status File**
+8.  **Update Worktree Status File**
 
     Update `C:/Projects/worktree-manager/status.json` to record that this worktree is now in use with the new branch.
 
@@ -181,24 +219,23 @@ Parse the user's input:
 ## Example Usage
 
 ```
-/create-worktree 88888
-/create-worktree 88888 integrate
+/create-worktree 88018
 ```
 
-Both forms will:
+The prompt will:
 
-1. Auto-detect (or use the specified) profile and fetch work item 88888 (in parallel)
-2. Create branch like `task/88888/implement-feature`
-3. Claim a parked worktree (fast) or create a new one at `.worktrees/rainier-N` (slow)
-4. Open the configured workspace on a new virtual desktop (`88888-implement-feature`)
-5. Open the Azure DevOps work item in the browser
-6. Run the profile's setup command (e.g. `yarn install`) if configured — incremental when reusing
-7. Update `status.json` to record the worktree is in use with the new branch name
+1. Ask the user to select a profile (if multiple exist)
+2. Fetch work item 88018 from Azure DevOps
+3. Create branch like `task/88018/implement-feature`
+4. Claim a parked worktree (fast) or create a new one at `.worktrees/rainier-N` (slow)
+5. Open the configured workspace on a new virtual desktop (`88018-implement-feature`)
+6. Open the Azure DevOps work item in the browser
+7. Generate `.github/copilot-instructions.md` in the worktree with work item context for VS Code Chat
+8. Run the profile's setup command (e.g. `pnpm install`) if configured
+9. Update `status.json` to record the worktree is in use with the new branch name
 
 ## Error Handling
 
-- If the profile name is invalid, list available profiles and ask the user to pick one
 - Verify work item exists and is accessible
 - Ensure git repository is valid
-- Handle git worktree creation failures
 - Handle git worktree creation failures
