@@ -215,6 +215,7 @@ $sessionEntry = [PSCustomObject]@{
     branch          = $BranchName
     desktopName     = $DesktopName
     profile         = $ProfileName
+    workItemUrl     = $WorkItemUrl
     copilotSessions = @($sessionId1, $sessionId2) | Where-Object { $_ }
 }
 $sessions | Add-Member -NotePropertyName "$WorkItemId" -NotePropertyValue $sessionEntry -Force

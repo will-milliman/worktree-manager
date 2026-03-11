@@ -31,7 +31,7 @@ If the user does not supply a worktree name, discover active (in-use) worktrees 
 
 1. **Resolve Worktree Path and Task Number**
 
-   Read `config/profiles.json` to determine the repo root path and base branch for the profile (e.g., `master`). The worktree directory path is `<repo-root>/<worktree-name>` (e.g., `C:/Users/william.cox/Documents/repositories/rainier-2`).
+   Read `config/profiles.json` to determine the repo root path and base branch for the profile (e.g., `master`). The worktree directory path is `C:/Projects/worktree-manager/.worktrees/<worktree-name>` (e.g., `C:/Projects/worktree-manager/.worktrees/rainier-2`).
 
    Look up the branch name from `status.json` for the given worktree name. Extract the task number from the branch (e.g., `task/88018/remove-prettier` → `88018`).
 
@@ -47,7 +47,15 @@ If the user does not supply a worktree name, discover active (in-use) worktrees 
    **IMPORTANT — Single execution**: All sub-steps below MUST be run in a **single terminal command**. Do NOT split these into separate `run_in_terminal` calls.
 
    ```powershell
-   cd "<worktree-path>"
+   Set-Location "<worktree-path>" -ErrorAction Stop
+
+   # Safety guard — abort if we're not in the expected worktree directory
+   $expectedPath = (Resolve-Path "<worktree-path>").Path
+   $currentPath  = (Get-Location).Path
+   if ($currentPath -ne $expectedPath) {
+       Write-Error "ERROR: Expected to be in '$expectedPath' but current directory is '$currentPath'. Aborting to prevent data loss."
+       exit 1
+   }
 
    # Fetch latest base branch
    git fetch origin <base-branch>
@@ -69,7 +77,32 @@ If the user does not supply a worktree name, discover active (in-use) worktrees 
 
    Verify that the worktree entry now shows `detached` instead of a `branch` line.
 
-4. **Update Worktree Status File**
+4. **Remove Session Logs for the Task**
+
+   Delete any `.sessions/logs` folders associated with the task number. These folders are named `<task-number>-<N>` (e.g., `90086-1`, `90086-2`).
+
+   ```powershell
+   $logsRoot = "C:/Projects/worktree-manager/.sessions/logs"
+   Get-ChildItem -Path $logsRoot -Directory | Where-Object { $_.Name -match "^<task-number>-" } | ForEach-Object {
+       Remove-Item -Recurse -Force $_.FullName
+       Write-Host "Removed session log: $($_.FullName)"
+   }
+   ```
+
+   If no matching folders exist, skip silently.
+
+   Also remove the entry for the task number from `.sessions/sessions.json`:
+
+   ```powershell
+   $sessionsFile = "C:/Projects/worktree-manager/.sessions/sessions.json"
+   $sessions = Get-Content $sessionsFile -Raw | ConvertFrom-Json
+   $sessions.PSObject.Properties.Remove("<task-number>")
+   $sessions | ConvertTo-Json -Depth 10 | Set-Content $sessionsFile
+   ```
+
+   If no entry exists for the task number, skip silently.
+
+5. **Update Worktree Status File**
 
    Update `C:/Projects/worktree-manager/status.json` to record that this worktree is now parked.
 
@@ -101,8 +134,9 @@ Either form will:
 
 1. Close all windows on the virtual desktop and remove it
 2. Reset the worktree to the base branch, detach HEAD, and clean untracked files
-3. Update `status.json` to record the worktree is parked (set to `"main"`)
-4. Leave the worktree directory intact with `node_modules` preserved for fast reuse
+3. Remove `.sessions/logs/<task-number>-*` folders for the task
+4. Update `status.json` to record the worktree is parked (set to `"main"`)
+5. Leave the worktree directory intact with `node_modules` preserved for fast reuse
 
 ## Safety Notes
 
