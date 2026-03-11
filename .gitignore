@@ -3,3 +3,4 @@
 .worktrees/
 status.json
 sessions.json
+.sessions/

@@ -2,240 +2,207 @@
 argument-hint: "<work-item-id> — e.g. 88018"
 ---
 
-# Create Worktree from Azure DevOps Work Item
+# Create Worktree from Azure DevOps Work Item (v2)
 
 You are helping to create a git worktree based on an Azure DevOps work item.
+
+The flow has three phases:
+
+1. **Gather all information** (parallel subtasks)
+2. **Assemble script parameters** (present a summary)
+3. **Run a single consolidated PowerShell script** (all mechanical work happens here)
+
+Do not run any terminal commands or file operations until Phase 3.
 
 ## Input
 
 The user provides a **work item ID** as free-text after the slash command.
 
 - Parse the numeric value as the **work item ID** (required).
-- Example: `/create-worktree 88018`
+- Example: `/create-worktree-v2 88018`
 
-## Instructions
+---
 
-0.  **Interactive Configuration**
+## Step 0 — Profile Selection (Interactive, Required Before Phase 1)
 
-    Before doing any work, gather configuration choices interactively.
+Read `config/profiles.json` to discover available profiles.
 
-    First, read `config/profiles.json` to discover available profiles.
+- If **multiple profiles** exist: use `ask_questions` to present a single-select picker from the profile names.
+- If **one profile** exists: auto-select it and tell the user which profile was chosen.
 
-    Then, resolve the profile:
-    - **Profile** _(only if multiple profiles exist)_: Use `ask_questions` to present a single-select picker from the profile names found in the config file.
-      - If only **one profile** exists, skip this question — auto-select it and tell the user which profile was chosen.
+Store the resolved **profile name** — all Phase 1 subtasks depend on it.
 
-    Store the resolved **profile** for use in subsequent steps.
+---
 
-## Steps
+## Phase 1 — Gather Information (Parallel Subtasks)
 
-1.  **Load Configuration & Fetch Work Item**
+Run **Subtask A** and **Subtask B** simultaneously. After both complete, run **Subtask C**.
 
-    Run **all** of the following **in parallel** (they have no dependencies on each other):
-    - **Resolve profile**: Using the profile selected in step 0 (either auto-selected or chosen by the user), extract the matching profile's repo path, base branch, workspace path, and `setup` config (if present).
-      - Derive `<repo-name>` from the profile's repo path (last path segment, e.g., `C:/Projects/rainier` → `rainier`).
-    - **Fetch work item**: Use `mcp_ado_wit_get_work_item` to fetch the work item.
-      - Parameters:
-        - id: the work item ID from user input
-        - project: 'Rainier'
-      - Extract:
-        - Work item type (System.WorkItemType)
-        - Title (System.Title)
-        - Description (System.Description)
+### Subtask A — Resolve Profile Config
 
-    Validate the profile exists and the work item is accessible before proceeding.
+Using the profile selected in Step 0, extract the following from `config/profiles.json`:
 
-2.  **Generate Branch Name**
-    - Format: `(task|bug)/<task-number>/<two-keywords>`
-    - Branch prefix: 'task' for Task/User Story/Feature, 'bug' for Bug
-    - Extract 2 meaningful keywords from title and description:
-      - Filter out common words (the, a, an, and, or, is, are, etc.)
-      - Prioritize words from title over description
-      - Use words with 3+ characters
-      - Join with hyphen (e.g., 'user-authentication')
-    - Example: `task/88888/user-authentication`
-    - **Check for existing branch**: After generating the branch name, verify it doesn't already exist locally or on remote:
-      ```powershell
-      git branch -a --list "*<branch-name>*"
-      ```
-    - If the branch already exists, pick a different pair of keywords from the title/description and regenerate the branch name. Repeat until a unique name is found.
-    - When selecting alternative keywords, draw from the remaining unused meaningful words in the title first, then the description. Avoid reusing any keyword pair that was already attempted.
+| Variable                 | Source                                                                                   |
+| ------------------------ | ---------------------------------------------------------------------------------------- |
+| `$repoPath`              | profile `repo` field (e.g. `C:/Projects/rainier`)                                        |
+| `$repoName`              | last path segment of `$repoPath` (e.g. `rainier`)                                        |
+| `$baseBranch`            | profile `branch` field (e.g. `main`)                                                     |
+| `$relativeWorkspacePath` | profile `workspace` field (e.g. `/monorepo/desktop/ui/.vscode/integrate.code-workspace`) |
+| `$hasSetup`              | `true` if profile has a `setup` object, otherwise `false`                                |
+| `$setupCwd`              | `setup.cwd` if present (relative path, e.g. `/monorepo/desktop/ui`)                      |
+| `$setupCommand`          | `setup.command` if present (e.g. `pnpm install`)                                         |
 
-3.  **Provision Worktree (Claim or Create)**
+### Subtask B — Fetch Work Item
 
-    First, check if a **parked worktree** is available to reuse. A parked worktree is one with a `detached` HEAD (no `branch` line) in the output of `git worktree list --porcelain`, located under `C:/Projects/worktree-manager/.worktrees/<repo-name>-*`.
+Use `mcp_ado_wit_get_work_item` to fetch the work item:
 
-    **IMPORTANT — Single execution**: All sub-steps below MUST be run in a **single terminal command** to avoid unnecessary round-trips. Do NOT split these into separate `run_in_terminal` calls.
+- `id`: the work item ID from user input
+- `project`: `Rainier`
 
-    ```powershell
-    # Ensure VirtualDesktop module is installed
-    if (-not (Get-Module -ListAvailable -Name VirtualDesktop)) {
-        Install-Module VirtualDesktop -Scope CurrentUser -Force
-    }
-    cd <repo-path>
-    git config core.longpaths true
-    git fetch origin <base-branch>
-    if (-not (Test-Path "C:/Projects/worktree-manager/.worktrees")) {
-        New-Item -ItemType Directory -Path "C:/Projects/worktree-manager/.worktrees" -Force | Out-Null
-    }
-    # Check for parked worktrees
-    git worktree list --porcelain
-    ```
+Extract:
 
-    Parse the output to find parked worktrees (entries with `detached` and path matching `.worktrees/<repo-name>-*`).
+| Variable               | Source                                                   |
+| ---------------------- | -------------------------------------------------------- |
+| `$workItemType`        | `System.WorkItemType` (e.g. `Task`, `Bug`, `User Story`) |
+| `$workItemTitle`       | `System.Title`                                           |
+| `$workItemDescription` | `System.Description` (strip HTML tags for plain text)    |
+| `$workItemUrl`         | `_links.html.href` from the response                     |
+| `$copilotPrompt`       | Generated — see below                                    |
 
-    ### 3a. Claim a Parked Worktree _(fast path)_
+If `_links.html.href` is not present, construct the fallback URL:
 
-    If a parked worktree is found, claim it by creating a new branch inside it. No directory move or rename is needed.
+```
+https://dev.azure.com/mgalfadev/5d438345-7020-4631-a370-020f9319088b/_workitems/edit/<work-item-id>
+```
 
-    ```powershell
-    cd "<parked-worktree-path>"
-    git reset --hard origin/<base-branch>
-    git checkout -b <branch-name>
-    ```
+**Generating `$copilotPrompt`:**
 
-    The worktree path stays the same (e.g., `C:/Projects/worktree-manager/.worktrees/rainier-1`).
+Compose a single-line string that gives a new Copilot session the full context it needs to start planning. Format:
 
-    ### 3b. Create a New Worktree _(slow path — only when no parked worktree is available)_
+```
+Plan implementation for ADO <workItemType> #<workItemId> — '<workItemTitle>': <one-sentence summary of the description>. Review the work item details and create a step-by-step implementation plan.
+```
 
-    Determine the next worktree index by scanning existing `<repo-name>-*` directories under `.worktrees/`:
+- Keep the string to one line (no newlines).
+- Keep it under 300 characters if possible — distill the description to its essence.
+- Avoid shell-unsafe characters (backticks, unmatched quotes, dollar signs).
 
-    ```powershell
-    # Find next available index
-    $existing = Get-ChildItem -Directory "C:/Projects/worktree-manager/.worktrees" -Filter "<repo-name>-*" | ForEach-Object {
-        if ($_.Name -match '-(\d+)$') { [int]$Matches[1] }
-    }
-    $nextIndex = if ($existing) { ($existing | Measure-Object -Maximum).Maximum + 1 } else { 1 }
-    $worktreePath = "C:/Projects/worktree-manager/.worktrees/<repo-name>-$nextIndex"
-    ```
+### Subtask C — Generate & Validate Branch Name _(after A & B complete)_
 
-    Then create the worktree using `origin/<base-branch>` as the start point:
-    - Worktree location: `C:/Projects/worktree-manager/.worktrees/<repo-name>-<index>`
-    - Execute: `git worktree add -b <branch-name> <worktree-path> origin/<base-branch>`
-    - **Long-running command handling**: This can take a long time on large repositories (e.g., 35K+ files):
-      1. Run the command as a **background terminal** (`isBackground=true`)
-      2. Use `await_terminal` with the returned terminal ID and a generous timeout (e.g., 300000ms / 5 minutes)
-      3. **Do NOT proceed** to step 4 until `await_terminal` returns a successful exit code
-      4. After completion, verify the worktree was registered: `git worktree list`
+**Generate branch name:**
 
-4.  **Create Virtual Desktop and Open Workspace**
-    - Construct the full workspace path by combining:
-      - Worktree path (from step 3a or 3b)
-      - Relative workspace path from profile config
-      - Example: `<worktree-path>/<workspace-path-from-profile>`
-    - Create a new virtual desktop named `<task-number>-<two-keywords>` (using the same keywords from the branch name):
-      ```powershell
-      Import-Module C:/Projects/worktree-manager/scripts/VirtualDesktopManager.psm1
-      $workspacePath = "<worktree-path>/<workspace-path-from-profile>"
-      $desktop = New-WorktreeDesktop -Name "<task-number>-<two-keywords>"
-      Switch-WorktreeDesktop -Desktop $desktop
-      Start-Process "code" -ArgumentList $workspacePath
-      ```
+- Format: `(task|bug)/<work-item-id>/<keyword1>-<keyword2>`
+- Prefix: `task` for Task / User Story / Feature; `bug` for Bug
+- Extract 2 meaningful keywords from title and description:
+  - Filter out stopwords (the, a, an, and, or, is, are, in, on, for, to, of, with, etc.)
+  - Prioritize words from the title over description
+  - Use words with 3+ characters
+  - Join with hyphen (e.g. `user-authentication`)
+- Example: `task/88018/user-authentication`
 
-5.  **Open Azure DevOps Work Item in Browser**
+**Validate uniqueness:**
 
-    Since the work item was already fetched in step 1, extract the work item URL from the response (the `_links.html.href` field) and open it in the default browser:
+Run the following terminal command to check if the branch already exists:
 
-    ```powershell
-    Start-Process "<work-item-url>"
-    ```
+```powershell
+git -C "<repoPath>" branch -a --list "*<branchName>*"
+```
 
-    If the URL was not available in the response, construct a fallback URL and open it anyway:
+If output is non-empty, the branch already exists. Pick a different keyword pair from the remaining unused meaningful words (title first, then description) and retry. Continue until a unique name is found.
 
-    ```powershell
-    Start-Process "https://dev.azure.com/mgalfadev/5d438345-7020-4631-a370-020f9319088b/_workitems/edit/<task-number>"
-    ```
+**Derive desktop name:**
 
-6.  **Generate Work Item Context File**
+- `$desktopName` = `<work-item-id>-<keyword1>-<keyword2>` (e.g. `88018-user-authentication`)
 
-    Write a `.github/copilot-instructions.md` file into the worktree so that VS Code Chat automatically loads the work item context into every conversation.
+---
 
-    > **IMPORTANT**: Use a **terminal command** (not a file-edit tool) to write this file, so it's created immediately without requiring user review.
+## Phase 2 — Parameter Summary
 
-    ```powershell
-    $contextDir = "<worktree-path>/.github"
-    if (-not (Test-Path $contextDir)) {
-        New-Item -ItemType Directory -Path $contextDir -Force | Out-Null
-    }
+Before running anything, present the following summary so the user can see exactly what will happen:
 
-    $contextContent = @"
-    # Active Work Item
+```
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Worktree Parameters
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Work Item:      #<workItemId> — <workItemTitle>
+  Type:           <workItemType>
+  Branch:         <branchName>
+  Desktop:        <desktopName>
+  Repo:           <repoPath>
+  Base Branch:    <baseBranch>
+  Workspace:      <repoPath><relativeWorkspacePath>
+  Terminal CWD:   <repoPath><setupCwd>
+  Setup Command:  <setupCommand> OR "(none)"
+  Copilot Prompt: <copilotPrompt>
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+```
 
-    - **Type**: <work-item-type>
-    - **ID**: <task-number>
-    - **Title**: <title>
-    - **URL**: <work-item-url>
-    - **Branch**: <branch-name>
+Then proceed immediately to Phase 3 — do not ask for confirmation.
 
-    ## Description
+---
 
-    <full-description-from-ado>
-    "@
+## Phase 3 — Run Consolidated Script
 
-    Set-Content -Path "$contextDir/copilot-instructions.md" -Value $contextContent -Encoding UTF8
-    Write-Host "Created .github/copilot-instructions.md with work item context"
-    ```
+Call `scripts/Create-Worktree.ps1` as a **single terminal execution**, passing all values resolved in Phase 1 as named parameters.
 
-    This file is untracked by git and will be automatically included in every VS Code Chat interaction within the worktree workspace. It is cleaned up automatically when the worktree is parked via `/clean-worktree` (since `git clean -fd` removes untracked files).
+The `git worktree add` step (slow path, triggered when no parked worktree exists) can take several minutes. Run the script as a **background terminal** (`isBackground=true`) with a **300 second timeout** via `await_terminal`. Do not proceed until it returns a successful exit code.
 
-7.  **Setup Worktree for Development** _(skip if profile has no `setup` config)_
+```powershell
+C:/Projects/worktree-manager/scripts/Create-Worktree.ps1 `
+  -RepoPath              "<repoPath>" `
+  -RepoName              "<repoName>" `
+  -BaseBranch            "<baseBranch>" `
+  -BranchName            "<branchName>" `
+  -DesktopName           "<desktopName>" `
+  -WorkItemId            <workItemId> `
+  -WorkItemTitle         "<workItemTitle>" `
+  -WorkItemType          "<workItemType>" `
+  -WorkItemUrl           "<workItemUrl>" `
+  -RelativeWorkspacePath "<relativeWorkspacePath>" `
+  -ProfileName           "<profileName>" `
+  -CopilotPrompt         "<copilotPrompt>" `
+  -SetupCwd              "<setupCwd>" `
+  -SetupCommand          "<setupCommand>"
+```
 
-    If the resolved profile contains a `setup` object, run the setup command to prepare the worktree for development.
-    - **Working directory**: `<worktree-path>` + `setup.cwd` (if specified). If `setup.cwd` is omitted, use the worktree root.
-    - **Command**: `setup.command` — the raw shell command string from the profile.
-    - **Visibility**: The terminal **must be visible** so the user can observe progress while they wait.
+**Parameter notes:**
 
-    > **CRITICAL**: Use `isBackground=false` — this is what makes the terminal visible.
-    > `isBackground=true` creates an invisible background shell the user cannot see.
-    > `isBackground=false` uses a shared, visible terminal that the user can watch in real-time.
-    - **Long-running command handling**: Setup commands like `yarn install; yarn build` can take a long time:
-      1. Run with `isBackground=false` and a generous `timeout` (e.g., 600000ms / 10 minutes)
-      2. The tool call blocks until the command finishes (or times out), returning the exit code
-      3. If the exit code is non-zero, stop and report the error
+- Omit `-SetupCwd` and `-SetupCommand` entirely if `$hasSetup` is `false`.
+- **`-CopilotPrompt` quoting:** Replace any double quotes or backticks in the prompt string with single quotes before substituting.
 
-    ```powershell
-    cd "<worktree-path>/<setup-cwd>"
-    <setup-command>
-    ```
-
-8.  **Update Worktree Status File**
-
-    Update `C:/Projects/worktree-manager/status.json` to record that this worktree is now in use with the new branch.
-
-    The file is a JSON object where keys are worktree directory names (e.g., `rainier-1`) and values are the branch name (`"main"` when parked, the full branch name when in use). Ignore any entries not matching `<repo-name>-*` (e.g., `IDM`).
-
-    > **IMPORTANT**: `status.json` is gitignored. Always update it via a **terminal command** (not a file-edit tool) so the change applies immediately without requiring user review.
-
-    Read the current file, update the entry for the claimed/created worktree directory, and write it back:
-
-    ```powershell
-    $statusFile = "C:/Projects/worktree-manager/status.json"
-    $status = Get-Content $statusFile -Raw | ConvertFrom-Json
-    $worktreeName = Split-Path "<worktree-path>" -Leaf   # e.g., "rainier-1"
-    $status.$worktreeName = "<branch-name>"
-    $status | ConvertTo-Json | Set-Content $statusFile
-    ```
+---
 
 ## Example Usage
 
 ```
-/create-worktree 88018
+/create-worktree-v2 88018
 ```
 
 The prompt will:
 
 1. Ask the user to select a profile (if multiple exist)
-2. Fetch work item 88018 from Azure DevOps
-3. Create branch like `task/88018/implement-feature`
-4. Claim a parked worktree (fast) or create a new one at `.worktrees/rainier-N` (slow)
-5. Open the configured workspace on a new virtual desktop (`88018-implement-feature`)
-6. Open the Azure DevOps work item in the browser
-7. Generate `.github/copilot-instructions.md` in the worktree with work item context for VS Code Chat
-8. Run the profile's setup command (e.g. `pnpm install`) if configured
-9. Update `status.json` to record the worktree is in use with the new branch name
+2. In parallel: resolve profile config + fetch work item 88018 from Azure DevOps
+3. Generate and validate branch name (e.g. `task/88018/implement-feature`) + compose copilot planning prompt
+4. Display a parameter summary
+5. Run a single consolidated script that:
+   - Fetches the base branch
+   - Claims a parked worktree (fast) or creates a new one at `.worktrees/<repo>-N` (slow)
+   - Opens the configured workspace in VS Code on a new virtual desktop (`88018-implement-feature`)
+   - Opens the Azure DevOps work item in the browser
+   - Launches Windows Terminal ("Worktree" profile) with 4 split panes:
+     - Top-left: `copilot --plan` session 1
+     - Bottom-left: setup command (e.g. `pnpm install`) — only if configured
+     - Top-right: `copilot --plan` session 2
+     - Bottom-right: `git status`
+   - Harvests Copilot session IDs from log files and stores them in `.sessions/sessions.json`
+   - Updates `status.json` to record the worktree is in use
 
 ## Error Handling
 
-- Verify work item exists and is accessible
-- Ensure git repository is valid
-- Handle git worktree creation failures
+- Verify work item exists and is accessible before Phase 1 completes
+- If branch name uniqueness check fails repeatedly (5+ attempts), report and ask user for a custom branch name
+- If `git worktree add` fails, report the error and stop
+- If the Windows Terminal launch fails, report the error and stop
+- If Copilot session IDs cannot be extracted from log files after retries, warn the user and store an empty `copilotSessions` array — do not fail the overall operation
+- If `.sessions/sessions.json` update fails, warn the user but continue
+- If `status.json` update fails, warn the user but don't fail the overall operation
