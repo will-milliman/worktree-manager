@@ -29,6 +29,9 @@ If the user does not supply a worktree name, discover active (in-use) worktrees 
 
 ## Instructions
 
+> **IMPORTANT — No PowerShell pipes (`|`) in inline commands.**
+> All terminal commands are executed via `pwsh -Command "..."` from a bash shell. Bash interprets `|` as a shell pipe, which breaks PowerShell pipe expressions. The code blocks below intentionally avoid `|` by using nested expressions (e.g., `ConvertFrom-Json (Get-Content ...)` instead of `Get-Content ... | ConvertFrom-Json`). **Do not rewrite them to use pipes.**
+
 1. **Resolve Worktree Path and Task Number**
 
    Read `config/profiles.json` to determine the repo root path and base branch for the profile (e.g., `master`). The worktree directory path is `C:/Projects/worktree-manager/.worktrees/<worktree-name>` (e.g., `C:/Projects/worktree-manager/.worktrees/rainier-2`).
@@ -75,32 +78,20 @@ If the user does not supply a worktree name, discover active (in-use) worktrees 
    Write-Host "=== DONE ==="
    ```
 
-   Verify that the worktree entry now shows `detached` instead of a `branch` line.
+    Verify that the worktree entry now shows `detached` instead of a `branch` line.
 
-4. **Remove Session Logs for the Task**
+4. **Remove Session Entry**
 
-   Delete any `.sessions/logs` folders associated with the task number. These folders are named `<task-number>-<N>` (e.g., `90086-1`, `90086-2`).
+    Remove the entry for the task number from `.sessions/sessions.json`:
 
-   ```powershell
-   $logsRoot = "C:/Projects/worktree-manager/.sessions/logs"
-   Get-ChildItem -Path $logsRoot -Directory | Where-Object { $_.Name -match "^<task-number>-" } | ForEach-Object {
-       Remove-Item -Recurse -Force $_.FullName
-       Write-Host "Removed session log: $($_.FullName)"
-   }
-   ```
+    ```powershell
+    $sessionsFile = "C:/Projects/worktree-manager/.sessions/sessions.json"
+    $sessions = ConvertFrom-Json (Get-Content $sessionsFile -Raw)
+    $sessions.PSObject.Properties.Remove("<task-number>")
+    Set-Content $sessionsFile -Value (ConvertTo-Json $sessions -Depth 10)
+    ```
 
-   If no matching folders exist, skip silently.
-
-   Also remove the entry for the task number from `.sessions/sessions.json`:
-
-   ```powershell
-   $sessionsFile = "C:/Projects/worktree-manager/.sessions/sessions.json"
-   $sessions = Get-Content $sessionsFile -Raw | ConvertFrom-Json
-   $sessions.PSObject.Properties.Remove("<task-number>")
-   $sessions | ConvertTo-Json -Depth 10 | Set-Content $sessionsFile
-   ```
-
-   If no entry exists for the task number, skip silently.
+    If no entry exists for the task number, skip silently.
 
 5. **Update Worktree Status File**
 
@@ -114,10 +105,10 @@ If the user does not supply a worktree name, discover active (in-use) worktrees 
 
    ```powershell
    $statusFile = "C:/Projects/worktree-manager/status.json"
-   $status = Get-Content $statusFile -Raw | ConvertFrom-Json
+   $status = ConvertFrom-Json (Get-Content $statusFile -Raw)
    $worktreeName = Split-Path "<worktree-path>" -Leaf   # e.g., "rainier-1"
    $status.$worktreeName = "main"
-   $status | ConvertTo-Json | Set-Content $statusFile
+   Set-Content $statusFile -Value (ConvertTo-Json $status)
    ```
 
 ## Example Usage
@@ -134,7 +125,7 @@ Either form will:
 
 1. Close all windows on the virtual desktop and remove it
 2. Reset the worktree to the base branch, detach HEAD, and clean untracked files
-3. Remove `.sessions/logs/<task-number>-*` folders for the task
+3. Remove the session entry from `.sessions/sessions.json`
 4. Update `status.json` to record the worktree is parked (set to `"main"`)
 5. Leave the worktree directory intact with `node_modules` preserved for fast reuse
 

@@ -6,6 +6,11 @@
     "setup": {
       "cwd": "/monorepo/desktop/ui",
       "command": "pnpm install"
+    },
+    "terminal": {
+      "cwd": "/monorepo/desktop/ui",
+      "command": "opencode",
+      "profile": "Worktree"
     }
   }
 }

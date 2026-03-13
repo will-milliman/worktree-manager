@@ -4,12 +4,14 @@ AI-powered Git worktree workflow for VS Code. Spins up isolated worktrees from A
 
 ## How It Works
 
-Two Copilot slash commands handle the full lifecycle:
+Four slash commands handle the full lifecycle:
 
 | Command | What it does |
 |---|---|
-| `/create-worktree <id> [profile]` | Fetches the ADO work item, creates a branch, provisions a worktree, opens a VS Code workspace on a new virtual desktop, and runs setup |
-| `/clean-worktree [name]` | Closes all windows on the worktree's virtual desktop, resets the worktree to a detached HEAD, and deletes the local branch — but **keeps the directory and `node_modules`** so the next task starts fast |
+| `/create-worktree <id>` | Fetches the ADO work item, creates a branch, provisions a worktree, opens a VS Code workspace on a new virtual desktop, and runs setup |
+| `/close-worktree [name]` | Suspends a worktree by closing its virtual desktop — preserves all git state for later reopening |
+| `/open-worktree [name]` | Resumes a suspended worktree — recreates the virtual desktop, reopens VS Code, and opens the work item in the browser |
+| `/clean-worktree [name]` | Parks a worktree — closes all windows, resets to detached HEAD, but **keeps the directory and `node_modules`** so the next task starts fast |
 
 ### Worktree Reuse (Parking)
 
@@ -49,10 +51,14 @@ Install-Module VirtualDesktop -Scope CurrentUser
 ## Project Structure
 
 ```
-config/profiles.json              # Repo profiles
+config/profiles.json               # Repo profiles
+scripts/Create-Worktree.ps1        # Main worktree creation script
 scripts/VirtualDesktopManager.psm1 # Virtual desktop helpers (create, switch, close)
-.github/prompts/                   # Copilot slash command definitions
-  create-worktree.prompt.md
-  clean-worktree.prompt.md
+.opencode/commands/                # Slash command definitions
+  create-worktree.md
+  close-worktree.md
+  open-worktree.md
+  clean-worktree.md
+.sessions/sessions.json            # Suspended worktree session state
 .worktrees/                        # Worktree directories (git-ignored)
 ```
