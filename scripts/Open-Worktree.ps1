@@ -32,6 +32,12 @@
 .PARAMETER TerminalProfile
     Optional Windows Terminal profile name to use (e.g. Worktree).
 
+.PARAMETER SetupDir
+    Optional full path to the directory to run the setup command in.
+
+.PARAMETER SetupCommand
+    Optional setup command to run in a second Windows Terminal tab (e.g. pnpm install && pnpm run dev:setup).
+
 .PARAMETER GitHubRepo
     Optional GitHub repository in the format owner/repo (e.g. milliman-lts/rainier).
     Used to find and open the pull request.
@@ -47,6 +53,8 @@ param(
     [Parameter(Mandatory = $false)] [string] $TerminalDir = "",
     [Parameter(Mandatory = $false)] [string] $TerminalCommand = "",
     [Parameter(Mandatory = $false)] [string] $TerminalProfile = "",
+    [Parameter(Mandatory = $false)] [string] $SetupDir = "",
+    [Parameter(Mandatory = $false)] [string] $SetupCommand = "",
     [Parameter(Mandatory = $false)] [string] $GitHubRepo = ""
 )
 
@@ -59,12 +67,19 @@ Switch-WorktreeDesktop -Desktop $desktop
 Start-Process "code" -ArgumentList $WorkspacePath
 Write-Host "Opened VS Code workspace on desktop $DesktopName"
 
-# ── 2. Open Windows Terminal with command (if configured) ─────────────────────
+# ── 2. Open Windows Terminal (if configured) ─────────────────────────────────
 if ($TerminalCommand -ne "") {
     $termDir = if ($TerminalDir) { $TerminalDir } else { $WorktreePath }
     $profileArg = if ($TerminalProfile) { " --profile `"$TerminalProfile`"" } else { "" }
-    Write-Host "=== Opening Windows Terminal in $termDir ==="
-    Start-Process "wt" -ArgumentList "-d `"$termDir`"$profileArg pwsh -NoExit -Command `"$TerminalCommand`""
+    # First tab: terminal command (e.g. opencode)
+    $wtArgs = "-d `"$termDir`"$profileArg pwsh -NoExit -Command `"$TerminalCommand`""
+    # Second tab: setup command (if configured)
+    if ($SetupCommand -ne "") {
+        $setupD = if ($SetupDir) { $SetupDir } else { $WorktreePath }
+        $wtArgs += " ; new-tab -d `"$setupD`"$profileArg pwsh -NoExit -Command `"$SetupCommand`""
+    }
+    Write-Host "=== Opening Windows Terminal ==="
+    Start-Process "wt" -ArgumentList $wtArgs
 }
 
 # ── 3. Open Azure DevOps work item in browser ────────────────────────────────

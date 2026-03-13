@@ -169,8 +169,7 @@ The prompt will:
    - Claims a parked worktree (fast) or creates a new one at `.worktrees/<repo>-N` (slow)
    - Opens the configured workspace in VS Code on a new virtual desktop (`88018-implement-feature`)
    - Opens the Azure DevOps work item in the browser
-   - Opens Windows Terminal in the configured directory and runs the terminal command (if configured in the profile)
-   - Runs the setup command (if configured in the profile)
+   - Opens Windows Terminal with two tabs: the first runs the terminal command (e.g. opencode) and the second runs the setup command (e.g. pnpm install) — if configured in the profile
    - Updates `.sessions/sessions.json` and `status.json` to record the worktree is in use
 
 ## Error Handling
@@ -178,6 +177,5 @@ The prompt will:
 - Verify work item exists and is accessible before Phase 1 completes
 - If branch name uniqueness check fails repeatedly (5+ attempts), report and ask user for a custom branch name
 - If `git worktree add` fails, report the error and stop
-- If the setup command fails, report the error and stop
 - If `.sessions/sessions.json` update fails, warn the user but continue
 - If `status.json` update fails, warn the user but don't fail the overall operation

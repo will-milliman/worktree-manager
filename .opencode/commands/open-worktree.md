@@ -86,6 +86,14 @@ Resolve the session key and all script parameters from config files. Do not run 
    | `$terminalCommand`  | `terminal.command` (e.g. `opencode`)                            |
    | `$terminalProfile`  | `terminal.profile` if present (e.g. `Worktree`)                |
 
+   Also check if the profile has a `setup` object. If so, extract:
+
+   | Variable            | Source                                                          |
+   | ------------------- | --------------------------------------------------------------- |
+   | `$hasSetup`         | `true` if profile has a `setup` object, otherwise `false`       |
+   | `$setupDir`         | `<worktreePath><setup.cwd>` (full path to setup directory)      |
+   | `$setupCommand`     | `setup.command` (e.g. `pnpm install && pnpm run dev:setup`)     |
+
 ---
 
 ## Phase 2 — Run Consolidated Script
@@ -95,7 +103,7 @@ Call `scripts/Open-Worktree.ps1` as a **single terminal execution**, passing all
 **Important:** Always invoke the script via `pwsh` (PowerShell Core), **not** through the default shell. This avoids variable expansion and redirection issues from nested PowerShell sessions.
 
 ```
-pwsh -ExecutionPolicy Bypass -File C:/Projects/worktree-manager/scripts/Open-Worktree.ps1 -WorktreePath "<worktreePath>" -BranchName "<branchName>" -DesktopName "<desktopName>" -SessionKey "<sessionKey>" -WorkItemUrl "<workItemUrl>" -WorkspacePath "<workspacePath>" -TerminalDir "<terminalDir>" -TerminalCommand "<terminalCommand>" -TerminalProfile "<terminalProfile>"
+pwsh -ExecutionPolicy Bypass -File C:/Projects/worktree-manager/scripts/Open-Worktree.ps1 -WorktreePath "<worktreePath>" -BranchName "<branchName>" -DesktopName "<desktopName>" -SessionKey "<sessionKey>" -WorkItemUrl "<workItemUrl>" -WorkspacePath "<workspacePath>" -TerminalDir "<terminalDir>" -TerminalCommand "<terminalCommand>" -TerminalProfile "<terminalProfile>" -SetupDir "<setupDir>" -SetupCommand "<setupCommand>"
 ```
 
 The command above must be passed to the Bash tool as a single line.
@@ -103,10 +111,7 @@ The command above must be passed to the Bash tool as a single line.
 **Parameter notes:**
 
 - Omit `-TerminalDir`, `-TerminalCommand`, and `-TerminalProfile` entirely if `$hasTerminal` is `false`.
-
-**Parameter notes:**
-
-- Omit `-TerminalDir` and `-TerminalCommand` entirely if `$hasTerminal` is `false`.
+- Omit `-SetupDir` and `-SetupCommand` entirely if `$hasSetup` is `false`.
 
 ---
 
@@ -123,7 +128,7 @@ Either form will:
 2. Call `Open-Worktree.ps1` which:
    - Creates (or reuses) the virtual desktop with the original name and switches to it
    - Opens the VS Code workspace
-   - Opens Windows Terminal in the configured directory and runs the terminal command (if configured in the profile)
+   - Opens Windows Terminal with two tabs: the first runs the terminal command (e.g. opencode) and the second runs the setup command (e.g. pnpm install) — if configured in the profile
    - Opens the Azure DevOps work item in the browser
    - Opens the GitHub pull request in the browser (if one exists)
    - Removes the session entry from `sessions.json`

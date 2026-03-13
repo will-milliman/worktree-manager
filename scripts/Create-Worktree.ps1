@@ -143,24 +143,22 @@ Start-Process "code" -ArgumentList $workspacePath
 # ── 7. Open Azure DevOps work item in browser ─────────────────────────────────
 Start-Process $WorkItemUrl
 
-# ── 8. Open Windows Terminal with command (if configured) ─────────────────────
+# ── 8. Open Windows Terminal (if configured) ──────────────────────────────────
 if ($TerminalCommand -ne "") {
     $terminalDir = if ($TerminalCwd) { Join-Path $worktreePath $TerminalCwd } else { $worktreePath }
     $profileArg = if ($TerminalProfile) { " --profile `"$TerminalProfile`"" } else { "" }
-    Write-Host "=== Opening Windows Terminal in $terminalDir ==="
-    Start-Process "wt" -ArgumentList "-d `"$terminalDir`"$profileArg pwsh -NoExit -Command `"$TerminalCommand`""
+    # First tab: terminal command (e.g. opencode)
+    $wtArgs = "-d `"$terminalDir`"$profileArg pwsh -NoExit -Command `"$TerminalCommand`""
+    # Second tab: setup command (if configured)
+    if ($SetupCommand -ne "") {
+        $setupDir = if ($SetupCwd) { Join-Path $worktreePath $SetupCwd } else { $worktreePath }
+        $wtArgs += " ; new-tab -d `"$setupDir`"$profileArg pwsh -NoExit -Command `"$SetupCommand`""
+    }
+    Write-Host "=== Opening Windows Terminal ==="
+    Start-Process "wt" -ArgumentList $wtArgs
 }
 
-# ── 9. Run setup command (if configured) ──────────────────────────────────────
-if ($SetupCommand -ne "") {
-    $setupDir = if ($SetupCwd) { Join-Path $worktreePath $SetupCwd } else { $worktreePath }
-    Write-Host "=== Running setup command in $setupDir ==="
-    Push-Location $setupDir
-    Invoke-Expression $SetupCommand
-    Pop-Location
-}
-
-# ── 10. Update .sessions/sessions.json ────────────────────────────────────────
+# ── 9. Update .sessions/sessions.json ─────────────────────────────────────────
 $sessionsFile = "C:/Projects/worktree-manager/.sessions/sessions.json"
 $sessions = Get-Content $sessionsFile -Raw | ConvertFrom-Json
 $sessionEntry = [PSCustomObject]@{
@@ -174,7 +172,7 @@ $sessions | Add-Member -NotePropertyName "$WorkItemId" -NotePropertyValue $sessi
 $sessions | ConvertTo-Json -Depth 3 | Set-Content $sessionsFile
 Write-Host "Updated .sessions/sessions.json for task $WorkItemId"
 
-# ── 11. Update status.json ────────────────────────────────────────────────────
+# ── 10. Update status.json ────────────────────────────────────────────────────
 $statusFile = "C:/Projects/worktree-manager/status.json"
 $status = Get-Content $statusFile -Raw | ConvertFrom-Json
 $worktreeName = Split-Path $worktreePath -Leaf

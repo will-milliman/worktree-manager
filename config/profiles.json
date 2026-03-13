@@ -6,7 +6,7 @@
     "workspace": "/monorepo/desktop/ui/.vscode/integrate.code-workspace",
     "setup": {
       "cwd": "/monorepo/desktop/ui",
-      "command": "pnpm install"
+      "command": "pnpm install && pnpm run dev:setup"
     },
     "terminal": {
       "cwd": "/monorepo/desktop/ui",
