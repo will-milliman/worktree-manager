@@ -31,6 +31,10 @@
 
 .PARAMETER TerminalProfile
     Optional Windows Terminal profile name to use (e.g. Worktree).
+
+.PARAMETER GitHubRepo
+    Optional GitHub repository in the format owner/repo (e.g. milliman-lts/rainier).
+    Used to find and open the pull request.
 #>
 [CmdletBinding()]
 param(
@@ -42,7 +46,8 @@ param(
     [Parameter(Mandatory = $true)]  [string] $WorkspacePath,
     [Parameter(Mandatory = $false)] [string] $TerminalDir = "",
     [Parameter(Mandatory = $false)] [string] $TerminalCommand = "",
-    [Parameter(Mandatory = $false)] [string] $TerminalProfile = ""
+    [Parameter(Mandatory = $false)] [string] $TerminalProfile = "",
+    [Parameter(Mandatory = $false)] [string] $GitHubRepo = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -69,7 +74,11 @@ Write-Host "Opened work item in browser: $WorkItemUrl"
 # ── 4. Open GitHub PR in browser (if one exists) ─────────────────────────────
 try {
     Set-Location $WorktreePath
-    $prUrl = & gh pr view --head $BranchName --json url --jq ".url" 2>$null
+    if ($GitHubRepo) {
+        $prUrl = & gh pr view $BranchName --repo $GitHubRepo --json url --jq ".url" 2>$null
+    } else {
+        $prUrl = & gh pr view $BranchName --json url --jq ".url" 2>$null
+    }
     if ($prUrl) {
         Start-Process $prUrl
         Write-Host "Opened PR: $prUrl"

@@ -1,6 +1,7 @@
 {
   "integrate": {
     "repo": "C:/Projects/rainier",
+    "githubRepo": "milliman-lts/rainier",
     "branch": "main",
     "workspace": "/monorepo/desktop/ui/.vscode/integrate.code-workspace",
     "setup": {
