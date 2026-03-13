@@ -29,12 +29,9 @@ If the user does not supply a worktree name, discover active (in-use) worktrees 
 
 ## Instructions
 
-> **IMPORTANT — No PowerShell pipes (`|`) in inline commands.**
-> All terminal commands are executed via `pwsh -Command "..."` from a bash shell. Bash interprets `|` as a shell pipe, which breaks PowerShell pipe expressions. The code blocks below intentionally avoid `|` by using nested expressions (e.g., `ConvertFrom-Json (Get-Content ...)` instead of `Get-Content ... | ConvertFrom-Json`). **Do not rewrite them to use pipes.**
-
 1. **Resolve Worktree Path and Task Number**
 
-   Read `config/profiles.json` to determine the repo root path and base branch for the profile (e.g., `master`). The worktree directory path is `C:/Projects/worktree-manager/.worktrees/<worktree-name>` (e.g., `C:/Projects/worktree-manager/.worktrees/rainier-2`).
+   Read `config/profiles.json` to determine the repo root path and base branch for the profile (e.g., `main`). The worktree directory path is `C:/Projects/worktree-manager/.worktrees/<worktree-name>` (e.g., `C:/Projects/worktree-manager/.worktrees/rainier-2`).
 
    Look up the branch name from `status.json` for the given worktree name. Extract the task number from the branch (e.g., `task/88018/remove-prettier` → `88018`).
 
@@ -45,71 +42,17 @@ If the user does not supply a worktree name, discover active (in-use) worktrees 
    Close-AllWindowsOnDesktop -TaskNumber <task-number>
    ```
 
-3. **Park the Worktree**
+3. **Park the Worktree, Remove Session Entry, and Update Status**
 
-   **IMPORTANT — Single execution**: All sub-steps below MUST be run in a **single terminal command**. Do NOT split these into separate `run_in_terminal` calls.
+   Run `Park-Worktree.ps1` as a **single terminal execution** via `pwsh -File`. This handles the git reset/detach/clean, removes the session entry from `sessions.json`, and updates `status.json` — all in one script invocation.
 
-   ```powershell
-   Set-Location "<worktree-path>" -ErrorAction Stop
+   **Important:** Always invoke via `pwsh -File` (not `-Command`) to avoid bash interpreting `$` variable sigils in the PowerShell code.
 
-   # Safety guard — abort if we're not in the expected worktree directory
-   $expectedPath = (Resolve-Path "<worktree-path>").Path
-   $currentPath  = (Get-Location).Path
-   if ($currentPath -ne $expectedPath) {
-       Write-Error "ERROR: Expected to be in '$expectedPath' but current directory is '$currentPath'. Aborting to prevent data loss."
-       exit 1
-   }
-
-   # Fetch latest base branch
-   git fetch origin <base-branch>
-
-   # Discard all changes to tracked files
-   git reset --hard origin/<base-branch>
-
-   # Detach HEAD — this signals the worktree is "parked" and available for reuse
-   git checkout --detach origin/<base-branch>
-
-   # Remove untracked files but preserve .gitignore'd files (node_modules, .yarn, build caches)
-   git clean -fd
-
-   # Verify the worktree is now parked
-   Write-Host "=== VERIFY ==="
-   git worktree list --porcelain
-   Write-Host "=== DONE ==="
+   ```
+   pwsh -ExecutionPolicy Bypass -File C:/Projects/worktree-manager/scripts/Park-Worktree.ps1 -WorktreePath "<worktree-path>" -BaseBranch "<base-branch>" -TaskNumber <task-number>
    ```
 
-    Verify that the worktree entry now shows `detached` instead of a `branch` line.
-
-4. **Remove Session Entry**
-
-    Remove the entry for the task number from `.sessions/sessions.json`:
-
-    ```powershell
-    $sessionsFile = "C:/Projects/worktree-manager/.sessions/sessions.json"
-    $sessions = ConvertFrom-Json (Get-Content $sessionsFile -Raw)
-    $sessions.PSObject.Properties.Remove("<task-number>")
-    Set-Content $sessionsFile -Value (ConvertTo-Json $sessions -Depth 10)
-    ```
-
-    If no entry exists for the task number, skip silently.
-
-5. **Update Worktree Status File**
-
-   Update `C:/Projects/worktree-manager/status.json` to record that this worktree is now parked.
-
-   The file is a JSON object where keys are worktree directory names (e.g., `rainier-1`) and values are the branch name (`"main"` when parked, the full branch name when in use). Ignore any entries not matching `<repo-name>-*` (e.g., `IDM`).
-
-   > **IMPORTANT**: `status.json` is gitignored. Always update it via a **terminal command** (not a file-edit tool) so the change applies immediately without requiring user review.
-
-   Read the current file, set the entry for the parked worktree to `"main"`, and write it back:
-
-   ```powershell
-   $statusFile = "C:/Projects/worktree-manager/status.json"
-   $status = ConvertFrom-Json (Get-Content $statusFile -Raw)
-   $worktreeName = Split-Path "<worktree-path>" -Leaf   # e.g., "rainier-1"
-   $status.$worktreeName = "main"
-   Set-Content $statusFile -Value (ConvertTo-Json $status)
-   ```
+   Verify in the output that the worktree entry now shows `detached` instead of a `branch` line.
 
 ## Example Usage
 

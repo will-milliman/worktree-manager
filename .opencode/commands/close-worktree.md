@@ -19,7 +19,7 @@ If the user does not supply a worktree ID, discover eligible worktrees from `sta
 
 1. Read `C:/Projects/worktree-manager/status.json`.
 2. Filter entries where the value is **not** `"main"` (i.e., the worktree has an active branch).
-3. Read `C:/Projects/worktree-manager/sessions.json` and **exclude** any entries whose worktree ID already appears as a key in `sessions.json` (these are already suspended).
+3. Read `C:/Projects/worktree-manager/.sessions/sessions.json` and **exclude** any entries whose worktree ID already appears as a key in `sessions.json` (these are already suspended).
 4. If no eligible worktrees remain, inform the user and stop.
 5. Use `ask_questions` to present a single-select picker:
    - **Question**: _"Which worktree do you want to close?"_
