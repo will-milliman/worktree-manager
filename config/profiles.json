@@ -3,14 +3,29 @@
     "repo": "C:/Projects/rainier",
     "githubRepo": "milliman-lts/rainier",
     "branch": "main",
-    "workspace": "/monorepo/desktop/ui/.vscode/integrate.code-workspace",
+    "workspace": "/monorepo/desktop/ui/.vscode/front-end.code-workspace",
     "setup": {
       "cwd": "/monorepo/desktop/ui",
       "command": "pnpm install && pnpm run dev:setup"
     },
     "terminal": {
       "cwd": "/monorepo/desktop/ui",
-      "command": "opencode",
+      "command": "copilot",
+      "profile": "Worktree"
+    }
+  },
+  "icun": {
+    "repo": "C:/Projects/IntegrateCoreUI",
+    "githubRepo": "milliman-lts/IntegrateCoreUI",
+    "branch": "main",
+    "workspace": "/monorepo/desktop/ui/.vscode/icun.code-workspace",
+    "setup": {
+      "cwd": "/monorepo/desktop/ui",
+      "command": "pnpm install"
+    },
+    "terminal": {
+      "cwd": "/monorepo/desktop/ui",
+      "command": "copilot",
       "profile": "Worktree"
     }
   }
